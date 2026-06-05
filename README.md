@@ -32,6 +32,12 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
+**Install Airflow (for running the full DAG locally)**
+
+```bash
+pip install apache-airflow==2.9.2
+```
+
 **Run the full stack with Docker Compose**
 
 ```bash
