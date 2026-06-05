@@ -7,6 +7,7 @@ the shared data directory. This keeps the DAG clean and the logic testable.
 
 import json
 import os
+import time
 
 import joblib
 import mlflow
@@ -22,10 +23,27 @@ RAW_PATH = os.path.join(DATA_DIR, "raw.csv")
 PROCESSED_PATH = os.path.join(DATA_DIR, "processed.csv")
 MODEL_PATH = os.path.join(DATA_DIR, "model.joblib")
 REPORT_PATH = os.path.join(DATA_DIR, "report.json")
+RUN_LOG_PATH = os.path.join(DATA_DIR, "run_log.json")
+
+DEFAULT_MIN_ROC_AUC = 0.70
+
+
+def _append_run_log(step: str, status: str, details: dict = None):
+    logs = []
+    if os.path.exists(RUN_LOG_PATH):
+        with open(RUN_LOG_PATH) as f:
+            logs = json.load(f)
+    logs.append({
+        "step": step,
+        "status": status,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        **(details or {}),
+    })
+    with open(RUN_LOG_PATH, "w") as f:
+        json.dump(logs, f, indent=2)
 
 
 def fetch_data(n_samples: int = 2000, seed: int = 42) -> None:
-    """Generate synthetic customer churn data and save to data/raw.csv."""
     rng = np.random.default_rng(seed)
 
     df = pd.DataFrame({
@@ -49,11 +67,11 @@ def fetch_data(n_samples: int = 2000, seed: int = 42) -> None:
 
     os.makedirs(DATA_DIR, exist_ok=True)
     df.to_csv(RAW_PATH, index=False)
+    _append_run_log("fetch_data", "success", {"rows": n_samples})
     print(f"Fetched {len(df)} rows -> {RAW_PATH}")
 
 
 def preprocess_data() -> None:
-    """Scale numeric features and save to data/processed.csv."""
     df = pd.read_csv(RAW_PATH)
 
     features = ["tenure", "monthly_charges", "num_products",
@@ -63,11 +81,15 @@ def preprocess_data() -> None:
 
     df.to_csv(PROCESSED_PATH, index=False)
     joblib.dump(scaler, os.path.join(DATA_DIR, "scaler.joblib"))
+    _append_run_log("preprocess_data", "success", {"features": features})
     print(f"Preprocessed data -> {PROCESSED_PATH}")
 
 
-def train_model() -> None:
-    """Train GradientBoosting classifier and log run to MLflow."""
+def train_model(
+    n_estimators: int = 100,
+    max_depth: int = 4,
+    learning_rate: float = 0.1,
+) -> None:
     df = pd.read_csv(PROCESSED_PATH)
     X = df.drop(columns=["churn"])
     y = df["churn"]
@@ -76,7 +98,11 @@ def train_model() -> None:
 
     mlflow.set_experiment("airflow-churn-pipeline")
     with mlflow.start_run():
-        params = {"n_estimators": 100, "max_depth": 4, "learning_rate": 0.1}
+        params = {
+            "n_estimators": n_estimators,
+            "max_depth": max_depth,
+            "learning_rate": learning_rate,
+        }
         mlflow.log_params(params)
 
         model = GradientBoostingClassifier(**params, random_state=42)
@@ -86,29 +112,53 @@ def train_model() -> None:
         y_proba = model.predict_proba(X_test)[:, 1]
 
         metrics = {
-            "accuracy": accuracy_score(y_test, y_pred),
-            "f1": f1_score(y_test, y_pred),
-            "roc_auc": roc_auc_score(y_test, y_proba),
+            "accuracy": round(accuracy_score(y_test, y_pred), 4),
+            "f1": round(f1_score(y_test, y_pred), 4),
+            "roc_auc": round(roc_auc_score(y_test, y_proba), 4),
         }
         mlflow.log_metrics(metrics)
 
-        joblib.dump({"model": model, "metrics": metrics}, MODEL_PATH)
+        joblib.dump({"model": model, "metrics": metrics, "params": params}, MODEL_PATH)
+        _append_run_log("train_model", "success", {"metrics": metrics})
         print(f"Model trained. Metrics: {metrics}")
 
 
-def evaluate_model() -> None:
-    """Load the trained model, run evaluation, and save a JSON report."""
+def evaluate_model(min_roc_auc: float = DEFAULT_MIN_ROC_AUC) -> dict:
     bundle = joblib.load(MODEL_PATH)
     metrics = bundle["metrics"]
 
+    passed = metrics["roc_auc"] >= min_roc_auc
     report = {
-        "status": "pass" if metrics["roc_auc"] >= 0.70 else "fail",
+        "status": "pass" if passed else "fail",
         "metrics": metrics,
+        "quality_gate": {"min_roc_auc": min_roc_auc},
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
     with open(REPORT_PATH, "w") as f:
         json.dump(report, f, indent=2)
 
-    print(f"Evaluation report: {report}")
-    if report["status"] == "fail":
-        raise ValueError(f"Model failed quality gate. ROC-AUC: {metrics['roc_auc']:.4f} < 0.70")
+    _append_run_log("evaluate_model", report["status"], {"roc_auc": metrics["roc_auc"]})
+    print(f"Evaluation: {report['status']} (ROC-AUC: {metrics['roc_auc']})")
+
+    if not passed:
+        raise ValueError(
+            f"Model failed quality gate. ROC-AUC: {metrics['roc_auc']:.4f} < {min_roc_auc}"
+        )
+    return report
+
+
+def run_pipeline(
+    n_samples: int = 2000,
+    min_roc_auc: float = DEFAULT_MIN_ROC_AUC,
+    n_estimators: int = 100,
+    max_depth: int = 4,
+    learning_rate: float = 0.1,
+) -> dict:
+    if os.path.exists(RUN_LOG_PATH):
+        os.remove(RUN_LOG_PATH)
+
+    fetch_data(n_samples=n_samples)
+    preprocess_data()
+    train_model(n_estimators=n_estimators, max_depth=max_depth, learning_rate=learning_rate)
+    return evaluate_model(min_roc_auc=min_roc_auc)

@@ -5,7 +5,7 @@ Runs daily at midnight. Steps:
     1. fetch_data    - generate/pull raw data
     2. preprocess    - scale features
     3. train         - train GradientBoosting, log to MLflow
-    4. evaluate      - check quality gate (ROC-AUC >= 0.70)
+    4. evaluate      - check quality gate (ROC-AUC >= 0.72)
 
 If evaluate fails, the DAG is marked as failed and the on-call gets notified.
 """
@@ -51,11 +51,17 @@ with DAG(
     t3 = PythonOperator(
         task_id="train_model",
         python_callable=train_model,
+        op_kwargs={
+            "n_estimators": 200,
+            "max_depth": 5,
+            "learning_rate": 0.05,
+        },
     )
 
     t4 = PythonOperator(
         task_id="evaluate_model",
         python_callable=evaluate_model,
+        op_kwargs={"min_roc_auc": 0.72},
     )
 
     t1 >> t2 >> t3 >> t4
