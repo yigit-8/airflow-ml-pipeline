@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+mlruns/
+data/raw.csv
+data/processed.csv
+data/model.joblib
+data/scaler.joblib
+data/report.json
+logs/
+.env
