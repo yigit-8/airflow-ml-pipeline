@@ -51,7 +51,7 @@ def test_train_custom_hyperparams():
 
 
 def test_evaluate_creates_report():
-    fetch_data(n_samples=200)
+    fetch_data(n_samples=500)
     preprocess_data()
     train_model()
     report = evaluate_model()
@@ -82,7 +82,7 @@ def test_run_log_is_written():
 def test_run_log_tracks_all_steps():
     if os.path.exists(RUN_LOG_PATH):
         os.remove(RUN_LOG_PATH)
-    fetch_data(n_samples=200)
+    fetch_data(n_samples=500)
     preprocess_data()
     train_model()
     evaluate_model()
@@ -114,7 +114,7 @@ def test_run_pipeline_custom_params():
 
 def test_run_pipeline_clears_log():
     fetch_data(n_samples=100)
-    run_pipeline(n_samples=200)
+    run_pipeline(n_samples=500)
     with open(RUN_LOG_PATH) as f:
         log = json.load(f)
     steps = [e["step"] for e in log]
