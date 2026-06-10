@@ -12,6 +12,16 @@ fetch_data -> preprocess_data -> train_model -> evaluate_model
 
 Each step is a separate Airflow task. If the model fails the quality gate (ROC-AUC < 0.70), the DAG is marked as failed.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    F[fetch_data] --> P[preprocess_data] --> TR[train_model] --> E[evaluate_model]
+    TR -- params and metrics --> M[MLflow]
+    E -- "ROC-AUC >= 0.70" --> OK[report.json]
+    E -- "ROC-AUC < 0.70" --> FAIL[DAG marked failed]
+```
+
 ## Tech Stack
 
 | Layer | Technology |
