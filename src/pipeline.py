@@ -24,6 +24,8 @@ PROCESSED_PATH = os.path.join(DATA_DIR, "processed.csv")
 MODEL_PATH = os.path.join(DATA_DIR, "model.joblib")
 REPORT_PATH = os.path.join(DATA_DIR, "report.json")
 RUN_LOG_PATH = os.path.join(DATA_DIR, "run_log.json")
+REFERENCE_PATH = os.path.join(DATA_DIR, "reference.csv")
+DRIFT_REPORT_PATH = os.path.join(DATA_DIR, "drift_report.json")
 
 DEFAULT_MIN_ROC_AUC = 0.70
 
@@ -119,6 +121,10 @@ def train_model(
         mlflow.log_metrics(metrics)
 
         joblib.dump({"model": model, "metrics": metrics, "params": params}, MODEL_PATH)
+
+        # Snapshot the raw training features as the drift reference
+        pd.read_csv(RAW_PATH).drop(columns=["churn"]).to_csv(REFERENCE_PATH, index=False)
+
         _append_run_log("train_model", "success", {"metrics": metrics})
         print(f"Model trained. Metrics: {metrics}")
 
@@ -145,6 +151,54 @@ def evaluate_model(min_roc_auc: float = DEFAULT_MIN_ROC_AUC) -> dict:
         raise ValueError(
             f"Model failed quality gate. ROC-AUC: {metrics['roc_auc']:.4f} < {min_roc_auc}"
         )
+    return report
+
+
+def check_drift(
+    current_path: str = RAW_PATH,
+    p_threshold: float = 0.05,
+    drift_share: float = 0.5,
+) -> dict:
+    """Compare the latest data batch against the training reference.
+
+    Runs a Kolmogorov-Smirnov test per feature. The dataset is considered
+    drifted when at least `drift_share` of the features reject the null
+    hypothesis at `p_threshold`.
+    """
+    from scipy.stats import ks_2samp
+
+    if not os.path.exists(REFERENCE_PATH):
+        report = {"drift_detected": False, "reason": "no_reference_data"}
+        _append_run_log("check_drift", "skipped", report)
+        return report
+
+    reference = pd.read_csv(REFERENCE_PATH)
+    current = pd.read_csv(current_path)
+    features = list(reference.columns)
+
+    drifted = []
+    p_values = {}
+    for feature in features:
+        _, p_value = ks_2samp(reference[feature], current[feature])
+        p_values[feature] = round(float(p_value), 6)
+        if p_value < p_threshold:
+            drifted.append(feature)
+
+    drift_detected = len(drifted) / len(features) >= drift_share
+    report = {
+        "drift_detected": drift_detected,
+        "drifted_features": drifted,
+        "p_values": p_values,
+        "thresholds": {"p_threshold": p_threshold, "drift_share": drift_share},
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+
+    with open(DRIFT_REPORT_PATH, "w") as f:
+        json.dump(report, f, indent=2)
+
+    _append_run_log("check_drift", "drift" if drift_detected else "no_drift",
+                    {"drifted_features": drifted})
+    print(f"Drift detected: {drift_detected} (drifted: {drifted})")
     return report
 
 

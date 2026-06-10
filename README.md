@@ -14,13 +14,32 @@ Each step is a separate Airflow task. If the model fails the quality gate (ROC-A
 
 ## Architecture
 
+Two DAGs work together: a daily training pipeline and a drift monitor that
+triggers retraining when incoming data no longer matches the training data.
+
 ```mermaid
 flowchart LR
-    F[fetch_data] --> P[preprocess_data] --> TR[train_model] --> E[evaluate_model]
-    TR -- params and metrics --> M[MLflow]
-    E -- "ROC-AUC >= 0.70" --> OK[report.json]
-    E -- "ROC-AUC < 0.70" --> FAIL[DAG marked failed]
+    subgraph training [churn_prediction_pipeline, daily]
+        F[fetch_data] --> P[preprocess_data] --> TR[train_model] --> E[evaluate_model]
+        TR -- params and metrics --> M[MLflow]
+        E -- "ROC-AUC >= 0.70" --> OK[report.json]
+        E -- "ROC-AUC < 0.70" --> FAIL[DAG marked failed]
+    end
+    subgraph monitoring [drift_monitoring, every 6 hours]
+        FB[fetch_fresh_batch] --> CD{check_drift KS test}
+        CD -- drift --> TRIG[trigger_retraining]
+        CD -- no drift --> NOOP[no_drift]
+    end
+    TR -- reference.csv --> CD
+    TRIG -. triggers .-> F
 ```
+
+## Drift Detection
+
+The training step snapshots its raw features as `reference.csv`. The
+drift monitor compares each new data batch against that snapshot with a
+Kolmogorov-Smirnov test per feature. When at least half the features
+drift (p < 0.05), the monitor triggers the training DAG.
 
 ## Tech Stack
 
