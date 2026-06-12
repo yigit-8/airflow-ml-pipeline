@@ -106,3 +106,7 @@ pytest tests/ -v
 ## CI/CD
 
 Every push to `main` runs the full pipeline test suite via GitHub Actions.
+
+## License
+
+Released under the MIT License. See [LICENSE](LICENSE).

@@ -1,4 +1,5 @@
 venv/
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -8,5 +9,9 @@ data/processed.csv
 data/model.joblib
 data/scaler.joblib
 data/report.json
+data/run_log.json
+data/drift_report.json
+data/reference.csv
+data/shifted.csv
 logs/
 .env
