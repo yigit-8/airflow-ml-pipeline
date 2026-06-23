@@ -1,6 +1,8 @@
 import json
 import os
 
+import joblib
+import pandas as pd
 import pytest
 
 from src.pipeline import (
@@ -24,7 +26,6 @@ from src.pipeline import (
 def test_fetch_data_creates_csv():
     fetch_data(n_samples=200)
     assert os.path.exists(RAW_PATH)
-    import pandas as pd
     df = pd.read_csv(RAW_PATH)
     assert len(df) == 200
     assert "churn" in df.columns
@@ -47,7 +48,6 @@ def test_train_custom_hyperparams():
     fetch_data(n_samples=200)
     preprocess_data()
     train_model(n_estimators=50, max_depth=3, learning_rate=0.05)
-    import joblib
     bundle = joblib.load(MODEL_PATH)
     assert bundle["params"]["n_estimators"] == 50
     assert bundle["params"]["max_depth"] == 3
@@ -103,7 +103,6 @@ def test_train_saves_drift_reference():
     preprocess_data()
     train_model()
     assert os.path.exists(REFERENCE_PATH)
-    import pandas as pd
     ref = pd.read_csv(REFERENCE_PATH)
     assert "churn" not in ref.columns
 
@@ -119,7 +118,6 @@ def test_check_drift_same_distribution_no_drift():
 
 
 def test_check_drift_detects_shifted_data():
-    import pandas as pd
     fetch_data(n_samples=1000, seed=1)
     preprocess_data()
     train_model()

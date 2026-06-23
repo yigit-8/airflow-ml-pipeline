@@ -19,7 +19,10 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt ruff
+
+      - name: Lint
+        run: ruff check src dags tests
 
       - name: Run pipeline tests
         run: pytest tests/ -v --tb=short

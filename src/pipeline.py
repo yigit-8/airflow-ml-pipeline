@@ -13,6 +13,7 @@ import joblib
 import mlflow
 import numpy as np
 import pandas as pd
+from scipy.stats import ks_2samp
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
@@ -165,8 +166,6 @@ def check_drift(
     drifted when at least `drift_share` of the features reject the null
     hypothesis at `p_threshold`.
     """
-    from scipy.stats import ks_2samp
-
     if not os.path.exists(REFERENCE_PATH):
         report = {"drift_detected": False, "reason": "no_reference_data"}
         _append_run_log("check_drift", "skipped", report)

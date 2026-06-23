@@ -10,13 +10,13 @@ Runs daily at midnight. Steps:
 If evaluate fails, the DAG is marked as failed and the on-call gets notified.
 """
 
+import os
+import sys
 from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
-import sys
-import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.pipeline import evaluate_model, fetch_data, preprocess_data, train_model
